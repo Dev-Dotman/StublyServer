@@ -11,17 +11,19 @@ const fs = require("fs");
 const path = require("path");
 const router = express.Router();
 const axios = require("axios");
-const crypto = require('crypto');
-const moment = require('moment');
+const crypto = require("crypto");
+const moment = require("moment");
 const { v4: uuidv4 } = require("uuid");
 require("dotenv").config();
 const { Op } = require("sequelize");
 const WebSocket = require("ws");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const { EventDetails, TicketDetails, GuestDetails } = require("./Schemas/EventDetails");
-
-
+const {
+  EventDetails,
+  TicketDetails,
+  GuestDetails,
+} = require("./Schemas/EventDetails");
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 
@@ -179,7 +181,6 @@ const ManagerNotification = sequelize.define(
     timestamps: true,
   }
 );
-
 
 sequelize
   .sync({ alter: true }) // `alter: true` modifies the existing tables to match the model
@@ -648,12 +649,12 @@ const verifyBankAccount = async (bankCode, accountNumber) => {
 };
 
 const parseTicketsFromFormData = (reqBody) => {
-  const tickets = reqBody.ticket.map(ticket => {
+  const tickets = reqBody.ticket.map((ticket) => {
     return {
       name: ticket.name,
       currency: ticket.currency,
       price: ticket.price,
-      quantity: ticket.quantity
+      quantity: ticket.quantity,
     };
   });
 
@@ -661,15 +662,14 @@ const parseTicketsFromFormData = (reqBody) => {
   return tickets;
 };
 
-
 const formatDateForMySQL = (isoDate) => {
   const date = new Date(isoDate);
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
 
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
@@ -696,7 +696,9 @@ app.post("/createEvent", upload.any(), async (req, res) => {
       accountNumber,
     } = req.body;
 
-    const eventImages = req.files.filter((file) => file.fieldname.startsWith("photos["));
+    const eventImages = req.files.filter((file) =>
+      file.fieldname.startsWith("photos[")
+    );
     const eventImage = eventImages[0] ? eventImages[0].filename : null;
 
     // Parse guests array from the request body
@@ -725,16 +727,13 @@ app.post("/createEvent", upload.any(), async (req, res) => {
       };
     });
 
-
-
-
     // Store the event details in the EventDetails model
     const newEvent = await EventDetails.create(
       {
         title: eventTitle,
         date,
         startTime: formatDateForMySQL(time),
-        endTime : formatDateForMySQL(endTime),
+        endTime: formatDateForMySQL(endTime),
         creator,
         address,
         landmark,
@@ -746,7 +745,7 @@ app.post("/createEvent", upload.any(), async (req, res) => {
         categories,
         bankName,
         accountNumber,
-        eventImage
+        eventImage,
       },
       { transaction: t }
     );
@@ -765,7 +764,7 @@ app.post("/createEvent", upload.any(), async (req, res) => {
     }
 
     // Store ticket details in the TicketDetails model
-    console.log(req.body)
+    console.log(req.body);
     const tickets = parseTicketsFromFormData(req.body);
 
     if (tickets.length === 0) {
@@ -775,16 +774,26 @@ app.post("/createEvent", upload.any(), async (req, res) => {
     // Validate each ticket
     tickets.forEach((ticket, index) => {
       if (!ticket.name || ticket.name.trim() === "") {
-        throw new Error(`Ticket name is required for ticket at index ${index}.`);
+        throw new Error(
+          `Ticket name is required for ticket at index ${index}.`
+        );
       }
       if (!ticket.currency || ticket.currency.trim() === "") {
         throw new Error(`Currency is required for ticket at index ${index}.`);
       }
       if (!ticket.price || isNaN(ticket.price) || Number(ticket.price) <= 0) {
-        throw new Error(`Valid price is required for ticket at index ${index}.`);
+        throw new Error(
+          `Valid price is required for ticket at index ${index}.`
+        );
       }
-      if (!ticket.quantity || isNaN(ticket.quantity) || Number(ticket.quantity) <= 0) {
-        throw new Error(`Valid quantity is required for ticket at index ${index}.`);
+      if (
+        !ticket.quantity ||
+        isNaN(ticket.quantity) ||
+        Number(ticket.quantity) <= 0
+      ) {
+        throw new Error(
+          `Valid quantity is required for ticket at index ${index}.`
+        );
       }
     });
 
@@ -821,41 +830,42 @@ app.post("/createEvent", upload.any(), async (req, res) => {
 
 function generateEventToken(event) {
   // Parse the startDate
-  const startDate = moment(event.startDate);
+  const startDate = moment(event.date);
 
   // Extract date from startDate
-  const datePart = startDate.format('YYYY-MM-DD'); // '2024-09-11'
+  const datePart = startDate.format("YYYY-MM-DD"); // '2024-09-11'
 
   // Combine date with startTime
   const combinedDateTime = moment(`${datePart}T${event.startTime}`);
 
   // Calculate the expiration time in seconds
-  const expiresIn = combinedDateTime.diff(moment(), 'seconds');
+  const expiresIn = combinedDateTime.diff(moment(), "seconds");
 
+  console.log(expiresIn);
+  console.log(event.date);
+  console.log(event.startTime);
   // Define the payload for the JWT
   const payload = {
     id: event.id,
     title: event.title,
-    date: event.startDate, // Full start date and time
+    date: event.date, // Full start date and time
     city: event.city,
-    startTime: event.startTime // Including startTime in the payload
+    startTime: event.startTime, // Including startTime in the payload
   };
 
   // Generate the token with expiration
-  const token = jwt.sign(payload, process.env.EVENT_EXPIRY_KEY , { expiresIn: expiresIn > 0 ? expiresIn : 0 }); // Token expires at the specified time or immediately if time has passed
+  const token = jwt.sign(payload, process.env.EVENT_EXPIRY_KEY, {
+    expiresIn: expiresIn > 0 ? expiresIn : 0,
+  }); // Token expires at the specified time or immediately if time has passed
   return token;
 }
 
-
-
-
-
-app.post('/eventByCreator', async (req, res) => {
+app.post("/eventByCreator", async (req, res) => {
   const { creator } = req.body; // Extract creator from request body
 
   if (!creator) {
-    console.log('message:', 'Creator is required');
-    return res.status(400).json({ message: 'Creator is required' });
+    console.log("message:", "Creator is required");
+    return res.status(400).json({ message: "Creator is required" });
   }
 
   try {
@@ -863,76 +873,80 @@ app.post('/eventByCreator', async (req, res) => {
     const events = await EventDetails.findAll({ where: { creator } });
 
     if (!events || events.length === 0) {
-      console.log('message:', 'Events not found for the given creator');
-      return res.status(404).json({ message: 'Events not found for the given creator' });
+      console.log("message:", "Events not found for the given creator");
+      return res
+        .status(404)
+        .json({ message: "Events not found for the given creator" });
     }
 
     // Organize guests and tickets for each event
-    const response = await Promise.all(events.map(async (event) => {
-      const eventId = event.id;
+    const response = await Promise.all(
+      events.map(async (event) => {
+        const eventId = event.id;
 
-      // Generate URL with the hashed ID
-      const eventUrl = `https://stublyevent.web.app/event/${generateEventToken(event)}`;
+        // Generate URL with the hashed ID
+        const eventUrl = `${generateEventToken(event)}`;
+        //https://stublyevent.web.app/event/
 
-      // Fetch guests for the event
-      const guests = await GuestDetails.findAll({ where: { eventId } });
+        // Fetch guests for the event
+        const guests = await GuestDetails.findAll({ where: { eventId } });
 
-      // Fetch tickets for the event
-      const tickets = await TicketDetails.findAll({ where: { eventId } });
+        // Fetch tickets for the event
+        const tickets = await TicketDetails.findAll({ where: { eventId } });
 
-      // Organize each event with its respective guests and tickets
-      return {
-        event: {
-          id: event.id,
-          title: event.title,
-          date: event.date,
-          city: event.city,
-          eventImage: event.eventImage,
-          url: eventUrl // Attach the generated URL
-        },
-        guests: guests.map(guest => ({
-          id: guest.id,
-          name: guest.name,
-          title: guest.title,
-          photo: guest.photo
-          // Add other guest fields here
-        })),
-        tickets: tickets.map(ticket => ({
-          id: ticket.id,
-          name: ticket.name,
-          price: ticket.price,
-          currency: ticket.currency,
-          quantity: ticket.quantity
-          // Add other ticket fields here
-        }))
-      };
-    }));
+        // Organize each event with its respective guests and tickets
+        return {
+          event: {
+            id: event.id,
+            title: event.title,
+            date: event.date,
+            city: event.city,
+            eventImage: event.eventImage,
+            url: eventUrl, // Attach the generated URL
+          },
+          guests: guests.map((guest) => ({
+            id: guest.id,
+            name: guest.name,
+            title: guest.title,
+            photo: guest.photo,
+            // Add other guest fields here
+          })),
+          tickets: tickets.map((ticket) => ({
+            id: ticket.id,
+            name: ticket.name,
+            price: ticket.price,
+            currency: ticket.currency,
+            quantity: ticket.quantity,
+            // Add other ticket fields here
+          })),
+        };
+      })
+    );
 
     // Log the full details in the console using JSON.stringify for better readability
-    console.log('events...', JSON.stringify(response, null, 2));
+    console.log("events...", JSON.stringify(response, null, 2));
 
     // Send the response with all events and their respective guests and tickets
     res.status(200).json(response);
   } catch (error) {
-    console.error('Error fetching event details:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error fetching event details:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-
-app.get('/event/:token', async (req, res) => {
+app.get("/event/:token", async (req, res) => {
   const { token } = req.params;
 
   try {
     // Verify and decode the token
-    const decoded = jwt.verify(token, 'your-secret-key');
-    const eventId = decoded.eventId;
+    const decoded = jwt.verify(token, process.env.EVENT_EXPIRY_KEY);
+    const eventId = decoded.id;
 
     // Fetch event details based on the eventId
     const event = await EventDetails.findOne({ where: { id: eventId } });
 
     if (!event) {
-      return res.status(404).json({ message: 'Event not found' });
+      return res.status(404).json({ message: "Event not found" });
     }
 
     // Fetch guests and tickets for the event
@@ -945,13 +959,12 @@ app.get('/event/:token', async (req, res) => {
       guests,
       tickets,
     });
+    console.log({ event, guests, tickets });
   } catch (error) {
-    console.error('Error fetching event details:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error fetching event details:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
-
-
 
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
