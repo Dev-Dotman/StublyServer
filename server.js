@@ -18,7 +18,6 @@ require("dotenv").config();
 const { Op } = require("sequelize");
 const WebSocket = require("ws");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-
 const {
   EventDetails,
   TicketDetails,
@@ -29,13 +28,32 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
+// const sequelize = new Sequelize(
+//   process.env.DB_NAME,
+//   process.env.DB_USERNAME,
+//   process.env.DB_PASSWORD,
+//   {
+//     host: process.env.DB_HOST,
+//     dialect: "mysql",
+//   }
+// );
+
 const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USERNAME,
-  process.env.DB_PASSWORD,
+  process.env.DB_NAME2,
+  process.env.USER,
+  process.env.PASSWORD,
   {
-    host: process.env.DB_HOST,
-    dialect: "mysql",
+    host: process.env.DB_HOST2,
+    dialect: "postgres",
+    // protocol: "postgres",
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false, // This line is important for connecting to Supabase
+      },
+    },
+    port: 6543, // Default PostgreSQL port
+    logging: console.log,
   }
 );
 
@@ -53,7 +71,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.post("/get-image", (req, res) => {
   const { imagePath } = req.body; // Get the image path from the request body
-  const imageFullPath = path.join(__dirname, imagePath); // Construct the full path to the image
+  const imageFullPath = path.join(__dirname, `uploads/${imagePath}`); // Construct the full path to the image
 
   res.sendFile(imageFullPath, (err) => {
     if (err) {
@@ -194,9 +212,7 @@ sequelize
 sequelize
   .authenticate()
   .then(() => {
-    console.log(
-      "Connection to MySQL database has been established successfully."
-    );
+    console.log("Connection to database has been established successfully.");
   })
   .catch((err) => {
     console.error("Unable to connect to the database:", err);
@@ -325,6 +341,7 @@ app.post("/send-otp", async (req, res) => {
 app.post("/register", async (req, res) => {
   try {
     const { firstName, lastName, email, password } = req.body;
+    console.log(req.body)
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -348,6 +365,8 @@ app.post("/register", async (req, res) => {
       success: true,
       user: newUser,
     });
+
+    console.log(newUser)
   } catch (error) {
     console.error("Error registering user:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -372,6 +391,8 @@ app.post("/login", async (req, res) => {
 
   try {
     // Find the user by email
+    const mail = email.toLowerCase();
+    console.log(mail);
     const user = await User.findOne({ where: { email } });
 
     if (!user) {
@@ -900,9 +921,87 @@ app.post("/eventByCreator", async (req, res) => {
             id: event.id,
             title: event.title,
             date: event.date,
+            state: event.state,
             city: event.city,
             eventImage: event.eventImage,
             url: eventUrl, // Attach the generated URL
+            tags: event.tags
+          },
+          guests: guests.map((guest) => ({
+            id: guest.id,
+            name: guest.name,
+            title: guest.title,
+            photo: guest.photo,
+            // Add other guest fields here
+          })),
+          tickets: tickets.map((ticket) => ({
+            id: ticket.id,
+            name: ticket.name,
+            price: ticket.price,
+            currency: ticket.currency,
+            quantity: ticket.quantity,
+            // Add other ticket fields here
+          })),
+        };
+      })
+    );
+
+    // Log the full details in the console using JSON.stringify for better readability
+    console.log("events...", JSON.stringify(response, null, 2));
+
+    // Send the response with all events and their respective guests and tickets
+    res.status(200).json(response);
+  } catch (error) {
+    console.error("Error fetching event details:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/events2", async (req, res) => {
+  const { creator } = req.body; // Extract creator from request body
+
+  if (!creator) {
+    console.log("message:", "Creator is required");
+    return res.status(400).json({ message: "Creator is required" });
+  }
+
+  try {
+    // Fetch all events created by the user
+    const events = await EventDetails.findAll();
+
+    if (!events || events.length === 0) {
+      console.log("message:", "No Events");
+      return res
+        .status(404)
+        .json({ message: "No Events" });
+    }
+
+    // Organize guests and tickets for each event
+    const response = await Promise.all(
+      events.map(async (event) => {
+        const eventId = event.id;
+
+        // Generate URL with the hashed ID
+        const eventUrl = `${generateEventToken(event)}`;
+        //https://stublyevent.web.app/event/
+
+        // Fetch guests for the event
+        const guests = await GuestDetails.findAll({ where: { eventId } });
+
+        // Fetch tickets for the event
+        const tickets = await TicketDetails.findAll({ where: { eventId } });
+
+        // Organize each event with its respective guests and tickets
+        return {
+          event: {
+            id: event.id,
+            title: event.title,
+            date: event.date,
+            state: event.state,
+            city: event.city,
+            eventImage: event.eventImage,
+            url: eventUrl, // Attach the generated URL
+            description: event.description
           },
           guests: guests.map((guest) => ({
             id: guest.id,
@@ -965,6 +1064,79 @@ app.get("/event/:token", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+const paystackSecretKey = process.env.PAYSTACKKEY1;
+
+const createSubaccount = async (bankCode, accountNumber, userBusinessName) => {
+  
+
+  const data = {
+    business_name: userBusinessName,
+    bank_code: bankCode, // e.g., "044" for Access Bank
+    account_number: accountNumber,
+    percentage_charge: 0, // You take the platform fee separately
+  };
+
+  try {
+    const response = await axios.post(
+      'https://api.paystack.co/subaccount',
+      data,
+      {
+        headers: {
+          Authorization: `Bearer ${paystackSecretKey}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    return response.data.data.subaccount_code; // Store this subaccount_code for splitting payments
+  } catch (error) {
+    console.error('Error creating subaccount:', error);
+  }
+};
+
+app.post('/api/paystack/initiate-payment', async (req, res) => {
+  const { ticketId, price, userEmail, organizerSubaccount } = req.body;
+
+  const serviceFee = 300; // Naira
+  const totalAmount = (price + serviceFee) * 100; // Convert to kobo
+
+  const data = {
+    email: userEmail, // Customer's email
+    amount: totalAmount,
+    callback_url: 'https://your-frontend-url.com/payment-success', // Redirect URL after successful payment
+    subaccount: organizerSubaccount, // Organizer's subaccount
+    transaction_charge: serviceFee * 100, // Service fee in kobo
+    split: {
+      subaccounts: [
+        {
+          subaccount: SERVICE_FEE_SUBACCOUNT, // Your subaccount for the service fee
+          share: serviceFee * 100, // Service fee share in kobo
+        },
+        {
+          subaccount: organizerSubaccount, // Event organizer's subaccount
+          share: price * 100, // Ticket price share in kobo
+        },
+      ],
+    },
+  };
+
+  try {
+    // Initialize Paystack transaction
+    const paystackResponse = await axios.post('https://api.paystack.co/transaction/initialize', data, {
+      headers: {
+        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+      },
+    });
+
+    const paymentUrl = paystackResponse.data.data.authorization_url;
+    res.json({ paymentUrl });
+  } catch (error) {
+    console.error('Error initializing payment:', error);
+    res.status(500).json({ error: 'Payment initialization failed' });
+  }
+});
+
+
 
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);

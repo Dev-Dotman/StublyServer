@@ -2,15 +2,18 @@ const { Sequelize, DataTypes } = require("sequelize");
 
 require("dotenv").config();
 
-const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USERNAME,
-  process.env.DB_PASSWORD,
-  {
-    host: process.env.DB_HOST,
-    dialect: "mysql",
-  }
-);
+const sequelize = new Sequelize(process.env.DB_NAME2, process.env.USER, process.env.PASSWORD, {
+  host: process.env.DB_HOST2,
+  dialect: "postgres",
+  // protocol: "postgres",
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false, // This line is important for connecting to Supabase
+    },
+  },
+  port: 6543, // Default PostgreSQL port
+});
 
 const EventDetails = sequelize.define(
   "EventDetails",
