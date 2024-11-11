@@ -22,6 +22,7 @@ const {
   EventDetails,
   TicketDetails,
   GuestDetails,
+  Transaction
 } = require("./Schemas/EventDetails");
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
@@ -954,6 +955,93 @@ app.post("/eventByCreator", async (req, res) => {
   } catch (error) {
     console.error("Error fetching event details:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/fetchTransactions", async (req, res) => {
+  const { payment_link_id, filter } = req.body; // Get filter from request
+
+  if (!payment_link_id) {
+    return res.status(400).json({ error: "Payment link ID is required." });
+  }
+
+  try {
+    const paymentLink = await EventDetails.findOne({
+      where: { key: payment_link_id },
+    });
+
+    if (!paymentLink) {
+      return res.status(404).json({ error: "Payment link not found." });
+    }
+
+    let transactions;
+    const now = new Date();
+    const timeRanges = {
+      "24h": new Date(now.getTime() - 24 * 60 * 60 * 1000),
+      "7d": new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+      "30d": new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+      "365d": new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000),
+    };
+
+    if (filter && filter !== "all") {
+      transactions = await Transaction.findAll({
+        where: {
+          payment_request_id: payment_link_id,
+          created_at: { [Op.gte]: timeRanges[filter] }, // Filter by the selected time range
+        },
+      });
+    } else {
+      transactions = await Transaction.findAll({
+        where: { payment_request_id: payment_link_id },
+      });
+    }
+
+    const totalRevenue = transactions.reduce((total, transaction) => {
+      return total + transaction.amount_merchant;
+    }, 0);
+
+    const merchantPublicKey = new PublicKey(
+      paymentLink.initializedWalletAddress
+    );
+    const merchantBalanceLamports = await provider.connection.getBalance(
+      merchantPublicKey
+    );
+    const merchantBalanceSOL = merchantBalanceLamports / LAMPORTS_PER_SOL;
+
+    // Update labels based on the filter
+    const labels = {
+      "24h": ["Last 24 Hours"],
+      "7d": ["Last 7 Days"],
+      "30d": ["Last 30 Days"],
+      "365d": ["Last 365 Days"],
+      all: ["All Time"],
+    };
+
+    const revenueData = {
+      labels: labels[filter || "all"], // Use filter to generate labels
+      datasets: [
+        {
+          label: "Revenue",
+          data: [totalRevenue], // Total revenue for the selected time range
+          backgroundColor: "rgba(0, 123, 255, 0.5)",
+          borderColor: "rgba(0, 123, 255, 1)",
+          borderWidth: 2,
+        },
+      ],
+    };
+
+    res.json({
+      transactions,
+      totalRevenue,
+      revenueData,
+      paymentLink,
+      balance: merchantBalanceSOL,
+    });
+  } catch (error) {
+    console.error("Error fetching transactions:", error);
+    res
+      .status(500)
+      .json({ error: "An error occurred while fetching transactions." });
   }
 });
 

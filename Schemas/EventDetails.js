@@ -177,6 +177,72 @@ const GuestDetails = sequelize.define(
   }
 );
 
+const Transaction = sequelize.define(
+  "Transaction",
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    payment_request_id: {
+      type: DataTypes.TEXT, // Change to STRING for the key obtained from the frontend
+      allowNull: false,
+    },
+    total_amount: {
+      type: DataTypes.FLOAT,
+      allowNull: false,
+    },
+    amount_platform: {
+      type: DataTypes.FLOAT,
+      allowNull: false,
+    },
+    amount_merchant: {
+      type: DataTypes.FLOAT,
+      allowNull: false,
+    },
+    transaction_hash: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+    },
+    payer_email: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        isEmail: true,
+      },
+    },
+    merchantWalletAddress: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    status: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: "Pending",
+    },
+    created_at: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
+    confirmed_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    updated_at: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    tableName: "transactions",
+    timestamps: false,
+  }
+);
+
 // Define associations
 GuestDetails.belongsTo(EventDetails, {
   foreignKey: "eventId",
@@ -193,4 +259,5 @@ module.exports = {
   EventDetails,
   TicketDetails,
   GuestDetails,
+  Transaction
 };
