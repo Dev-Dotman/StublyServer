@@ -27,7 +27,7 @@ Clone the repository:
 
 bash
 Copy code
-git clone https://github.com/your-username/stubly.git
+git clone https://github.com/Dev-Dotman/stubly.git
 cd stubly
 Install dependencies:
 
@@ -37,15 +37,9 @@ npm install
 Set up the environment variables: Create a .env file and include the following:
 
 env
-Copy code
-PORT=3000
-DATABASE_URL=your_database_url
-JWT_SECRET=your_secret_key
-Start the development server:
+Full details on the .env requirements coming soon
 
 bash
-Copy code
-npm run dev
 Note: Some features are incomplete and may not work as expected.
 
 Technologies Used
